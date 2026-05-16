@@ -9,6 +9,7 @@ const riderRoutes = require("./modules/riders/rider.routes");
 const userRoutes = require("./modules/users/user.routes");
 const infraRoutes = require("./modules/infrastructure/infra.routes");
 const reviewRoutes = require("./modules/reviews/review.routes");
+const adminRoutes = require("./modules/admin/admin.routes");
 
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
@@ -29,9 +30,9 @@ app.use("/api/auth", router);
 app.use("/api/parcels", parcelRouter);
 app.use("/api/riders", riderRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/admin/users', userRoutes);
 app.use('/api/infra', infraRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Error handling middleware (MUST be at the bottom)
 app.use((err, req, res, next) => {

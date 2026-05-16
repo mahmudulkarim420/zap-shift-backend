@@ -7,9 +7,12 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['user', 'rider', 'admin'], default: 'user' },
-  status: { type: String, enum: ['active', 'suspended'], default: 'active' },
+  status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'active' },
   image: { type: String, default: "" },
-  phone: { type: String, default: "" }
+  phone: { type: String, default: "" },
+  nid: { type: String, default: "" },
+  age: { type: Number, default: null },
+  warehouseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse', default: null }
 }, { timestamps: true });
 
 // Hash password before saving

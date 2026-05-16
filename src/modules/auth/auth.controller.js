@@ -163,10 +163,52 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const riderRegister = async (req, res, next) => {
+  try {
+    const { name, email, password, age, phone, nid, warehouseId } = req.body;
+
+    if (!name || !email || !password || !age || !phone || !nid || !warehouseId) {
+      return res.status(400).json({ success: false, message: "All fields are required for rider application." });
+    }
+
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ success: false, message: "User already exists with this email." });
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password,
+      age,
+      phone,
+      nid,
+      warehouseId,
+      role: "rider",
+      status: "pending",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Application submitted successfully! Awaiting admin approval.",
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   getMe,
   googleLogin,
   updateProfile,
+  riderRegister,
 };
