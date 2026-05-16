@@ -14,10 +14,27 @@ const paymentRouter = require("./modules/payments/payment.routes");
 
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL, 
-  credentials: true
-}));
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://zap-shift-frontend.vercel.app",
+  process.env.FRONTEND_URL?.replace(/\/$/, ""),
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
