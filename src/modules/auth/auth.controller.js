@@ -167,40 +167,81 @@ const riderRegister = async (req, res, next) => {
   try {
     const { name, email, password, age, phone, nid, warehouseId } = req.body;
 
-    if (!name || !email || !password || !age || !phone || !nid || !warehouseId) {
-      return res.status(400).json({ success: false, message: "All fields are required for rider application." });
+    // 1. Mandatory Field Validation
+    if (!name || !email || !password || !age || !phone || !nid) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Missing required fields. Name, email, password, age, phone, and NID are mandatory." 
+      });
     }
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ success: false, message: "User already exists with this email." });
+    // 2. Safe Parsing & Bulletproofing (Senior Expert Implementation)
+    // Handle empty strings for ObjectId fields to prevent Mongoose CastError
+    const safeWarehouseId = warehouseId && warehouseId !== "" && warehouseId !== "null" ? warehouseId : null;
+    const cleanAge = parseInt(age);
+    
+    if (isNaN(cleanAge)) {
+      return res.status(400).json({ success: false, message: "Age must be a valid number." });
     }
 
-    const user = await User.create({
-      name,
-      email,
-      password,
-      age,
-      phone,
-      nid,
-      warehouseId,
-      role: "rider",
-      status: "pending",
-    });
+    // 3. User Existence & Role Logic
+    let user = await User.findOne({ email });
 
-    res.status(201).json({
+    if (user) {
+      // Prevent active riders or pending applicants from re-applying
+      if (user.role === "rider") {
+        return res.status(400).json({ success: false, message: "This account is already registered as a rider." });
+      }
+      
+      if (user.status === "pending") {
+        return res.status(400).json({ success: false, message: "You already have a pending application under review." });
+      }
+
+      // Update existing user record with rider-specific metadata
+      user.age = cleanAge;
+      user.phone = phone;
+      user.nid = nid;
+      user.warehouseId = safeWarehouseId;
+      user.status = "pending"; // Mark for admin review
+      
+      // Note: role remains 'user' until approved
+      await user.save();
+    } else {
+      // 4. Create New Account as Rider Applicant
+      user = await User.create({
+        name,
+        email,
+        password, // Hashing is handled by User.model pre-save hook using bcryptjs
+        age: cleanAge,
+        phone,
+        nid,
+        warehouseId: safeWarehouseId,
+        role: "user", 
+        status: "pending",
+      });
+    }
+
+    // 5. Success Response
+    return res.status(201).json({
       success: true,
-      message: "Application submitted successfully! Awaiting admin approval.",
+      message: "Rider application submitted successfully. Please wait for admin approval.",
       data: {
         id: user._id,
-        name: user.name,
         email: user.email,
         role: user.role,
         status: user.status
       }
     });
+
   } catch (error) {
-    next(error);
+    // High-visibility logging for Senior Expert debugging
+    console.error("RIDER_REGISTER_CRASH:", error);
+    
+    // Structured error handling to prevent raw server leaks
+    return res.status(400).json({ 
+      success: false, 
+      message: error.message || "An unexpected error occurred during rider registration." 
+    });
   }
 };
 

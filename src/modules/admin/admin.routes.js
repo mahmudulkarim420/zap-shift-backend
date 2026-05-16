@@ -16,5 +16,8 @@ router.put("/users/:id/role-status", adminController.updateUserRoleStatus);
 router.put("/users/:id/status",     adminController.updateUserRoleStatus); // Backward compatibility
 router.put("/users/:id/role",       adminController.updateUserRoleStatus); // Backward compatibility
 router.get("/parcels",              adminController.getAllParcels);
+router.put("/parcels/approve-match/:id", adminController.approveMatch);
+router.put("/parcels/assign/:id",       adminController.forceAssignRider);
+router.put("/parcels/force-cancel/:id", adminController.forceCancelParcel);
 
 module.exports = router;

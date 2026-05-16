@@ -23,8 +23,9 @@ const parcelSchema = new mongoose.Schema(
       enum: [
         "pending",
         "accepted",
-        "in_transit",
-        "out_for_delivery",
+        "awaiting_payment",
+        "paid",
+        "picked_up",
         "delivered",
         "cancelled",
         "returned",

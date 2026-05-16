@@ -190,6 +190,197 @@ const getMyBookings = async (req, res, next) => {
     next(error);
   }
 };
+// RIDER: Browse Open Orders
+const getAvailableParcels = async (req, res, next) => {
+  try {
+    // Parcels that are pending and haven't been assigned a rider yet
+    const parcels = await Parcel.find({ 
+      status: "pending", 
+      assignedRider: null 
+    })
+    .populate("sender", "name email")
+    .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, count: parcels.length, data: parcels });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// RIDER: Accept an Order
+const acceptParcel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const parcel = await Parcel.findById(id);
+
+    if (!parcel) {
+      return res.status(404).json({ success: false, message: "Parcel not found" });
+    }
+
+    if (parcel.assignedRider) {
+      return res.status(400).json({ success: false, message: "This parcel has already been assigned to a rider." });
+    }
+
+    parcel.assignedRider = req.user._id;
+    parcel.status = "accepted";
+    await parcel.save();
+
+    // Log tracking event
+    await TrackingEvent.create({
+      parcelId: parcel._id,
+      status: "accepted",
+      location: parcel.currentWarehouse || "Dispatch Center",
+      note: `Parcel accepted by rider: ${req.user.name}`,
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Parcel accepted successfully!", 
+      data: parcel 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// RIDER: My Active Tasks
+const getMyTasks = async (req, res, next) => {
+  try {
+    const parcels = await Parcel.find({ 
+      assignedRider: req.user._id,
+      status: { $in: ["accepted", "awaiting_payment", "paid", "picked_up"] }
+    }).sort({ updatedAt: -1 });
+
+    res.status(200).json({ success: true, count: parcels.length, data: parcels });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// RIDER: Delivery Lifecycle Update
+const updateDeliveryStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    // Validate status transitions for riders
+    const allowedStatuses = ["paid", "picked_up", "delivered"];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid delivery status transition." });
+    }
+
+    const parcel = await Parcel.findOne({ _id: id, assignedRider: req.user._id });
+    if (!parcel) {
+      return res.status(404).json({ success: false, message: "Parcel not found or not assigned to you." });
+    }
+
+    // Handle "delivered" logic (Add Earnings)
+    if (status === "delivered" && parcel.status !== "delivered") {
+      const rider = await User.findById(req.user._id);
+      if (rider) {
+        rider.earnings += parcel.deliveryCharge;
+        rider.deliveriesCompleted += 1;
+        await rider.save();
+      }
+    }
+
+    parcel.status = status;
+    await parcel.save();
+
+    // Log tracking event
+    await TrackingEvent.create({
+      parcelId: parcel._id,
+      status: status,
+      location: parcel.currentWarehouse || "On the Road",
+      note: note || `Parcel is now ${status.replace(/_/g, ' ')}`,
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: `Status updated to ${status}`, 
+      data: parcel 
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// RIDER: Performance & Earnings Stats
+const getRiderStats = async (req, res, next) => {
+  try {
+    const riderId = req.user._id;
+
+    // 1. Calculate Total Earnings
+    const earningsAggregation = await Parcel.aggregate([
+      { $match: { assignedRider: riderId, status: "delivered" } },
+      { $group: { _id: null, total: { $sum: "$deliveryCharge" } } }
+    ]);
+    const totalEarnings = earningsAggregation.length > 0 ? earningsAggregation[0].total : 0;
+
+    // 2. Counts
+    const totalDeliveries = await Parcel.countDocuments({ assignedRider: riderId, status: "delivered" });
+    const activeTasks = await Parcel.countDocuments({ 
+      assignedRider: riderId, 
+      status: { $nin: ["delivered", "cancelled", "returned"] } 
+    });
+
+    // 3. Recent History
+    const recentDeliveries = await Parcel.find({ assignedRider: riderId, status: "delivered" })
+      .sort({ updatedAt: -1 })
+      .limit(10);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalEarnings,
+        totalDeliveries,
+        activeTasks,
+        recentDeliveries
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const cancelParcel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const parcel = await Parcel.findOne({ _id: id, sender: userId });
+    if (!parcel) {
+      return res.status(404).json({ success: false, message: "Parcel not found or unauthorized." });
+    }
+
+    const uncancelableStatuses = ['picked_up', 'delivered', 'cancelled', 'returned'];
+    if (uncancelableStatuses.includes(parcel.status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Cannot cancel order. Parcel is already in transit or completed." 
+      });
+    }
+
+    parcel.status = "cancelled";
+    await parcel.save();
+
+    await TrackingEvent.create({
+      parcelId: parcel._id,
+      status: "cancelled",
+      location: "System",
+      note: "Order cancelled by user.",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully.",
+      data: parcel
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createParcel,
   trackParcel,
@@ -197,4 +388,10 @@ module.exports = {
   assignRiderToParcel,
   getAdminStats,
   getMyBookings,
+  getAvailableParcels,
+  acceptParcel,
+  getMyTasks,
+  updateDeliveryStatus,
+  getRiderStats,
+  cancelParcel,
 };

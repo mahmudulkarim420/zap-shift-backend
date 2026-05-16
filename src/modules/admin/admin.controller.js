@@ -11,10 +11,10 @@ const getDashboardStats = async (req, res, next) => {
       pendingApprovals,
       completedDeliveries,
     ] = await Promise.all([
-      User.countDocuments({ role: "user" }),
+      User.countDocuments({ role: "user", status: "active" }),
       User.countDocuments({ role: "rider", status: "active" }),
       Parcel.countDocuments({ status: { $in: ["accepted", "in_transit", "out_for_delivery"] } }),
-      User.countDocuments({ role: "rider", status: "pending" }),
+      User.countDocuments({ status: "pending" }),
       Parcel.countDocuments({ status: "delivered" }),
     ]);
 
@@ -30,7 +30,8 @@ const getDashboardStats = async (req, res, next) => {
 // GET /admin/riders/pending
 const getPendingRiders = async (req, res, next) => {
   try {
-    const riders = await User.find({ role: "rider", status: "pending" })
+    // We look for any user with status 'pending' (these are the applicants)
+    const riders = await User.find({ status: "pending" })
       .select("-password")
       .populate("warehouseId", "name area city")
       .sort({ createdAt: -1 });
@@ -45,8 +46,8 @@ const getPendingRiders = async (req, res, next) => {
 const approveRider = async (req, res, next) => {
   try {
     const rider = await User.findOneAndUpdate(
-      { _id: req.params.id, role: "rider", status: "pending" },
-      { status: "active" },
+      { _id: req.params.id, status: "pending" },
+      { status: "active", role: "rider" }, // Promote to rider on approval
       { new: true }
     ).select("-password");
 
@@ -154,10 +155,86 @@ const getAllParcels = async (req, res, next) => {
   try {
     const parcels = await Parcel.find({})
       .populate("sender", "name email")
+      .populate("assignedRider", "name email")
       .sort({ createdAt: -1 })
       .limit(200);
 
     res.status(200).json({ success: true, count: parcels.length, data: parcels });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const approveMatch = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const parcel = await Parcel.findById(id);
+
+    if (!parcel) {
+      return res.status(404).json({ success: false, message: "Parcel not found" });
+    }
+
+    if (parcel.status !== "accepted") {
+      return res.status(400).json({ success: false, message: "Parcel must be in 'accepted' status to be approved by admin." });
+    }
+
+    parcel.status = "awaiting_payment";
+    await parcel.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Rider-parcel match approved. Awaiting user payment.",
+      data: parcel
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const forceAssignRider = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { riderId } = req.body;
+
+    const rider = await User.findOne({ _id: riderId, role: 'rider' });
+    if (!rider) {
+      return res.status(404).json({ success: false, message: "Rider not found or invalid role." });
+    }
+
+    const parcel = await Parcel.findByIdAndUpdate(
+      id,
+      { assignedRider: riderId, status: 'accepted' },
+      { new: true }
+    ).populate('assignedRider', 'name email');
+
+    if (!parcel) return res.status(404).json({ success: false, message: "Parcel not found." });
+
+    res.status(200).json({
+      success: true,
+      message: `Parcel force-assigned to ${rider.name}`,
+      data: parcel
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const forceCancelParcel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const parcel = await Parcel.findByIdAndUpdate(
+      id,
+      { status: 'cancelled' },
+      { new: true }
+    );
+
+    if (!parcel) return res.status(404).json({ success: false, message: "Parcel not found." });
+
+    res.status(200).json({
+      success: true,
+      message: "Parcel cancelled by administrator.",
+      data: parcel
+    });
   } catch (error) {
     next(error);
   }
@@ -169,7 +246,10 @@ module.exports = {
   approveRider,
   getAllUsers,
   updateUserRoleStatus,
-  updateUserRole, // Keeping for backward compatibility if needed
+  updateUserRole, 
   getAllRiders,
   getAllParcels,
+  approveMatch,
+  forceAssignRider,
+  forceCancelParcel,
 };

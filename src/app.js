@@ -10,11 +10,16 @@ const userRoutes = require("./modules/users/user.routes");
 const infraRoutes = require("./modules/infrastructure/infra.routes");
 const reviewRoutes = require("./modules/reviews/review.routes");
 const adminRoutes = require("./modules/admin/admin.routes");
+const paymentRouter = require("./modules/payments/payment.routes");
 
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL, 
+  credentials: true
+}));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Main Root Route
 app.get("/", (req, res) => {
@@ -33,6 +38,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/infra', infraRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payments', paymentRouter);
 
 // Error handling middleware (MUST be at the bottom)
 app.use((err, req, res, next) => {
