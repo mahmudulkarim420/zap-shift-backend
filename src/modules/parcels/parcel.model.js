@@ -12,7 +12,7 @@ const parcelSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["Standard", "Fragile", "Document", "Liquid"],
+      enum: ["Standard", "Fragile", "Document", "Liquid", "Small package", "Medium package", "Large package"],
       default: "Standard",
     },
     weight: { type: Number, required: true }, 
@@ -33,6 +33,7 @@ const parcelSchema = new mongoose.Schema(
     },
     assignedRider: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     currentWarehouse: { type: String, default: "Central Hub" },
+    instructions: { type: String, default: "" },
   },
   { timestamps: true },
 );

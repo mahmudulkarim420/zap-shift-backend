@@ -1,4 +1,4 @@
-const Review = require("./warehouse.model");
+const Warehouse = require("./warehouse.model");
 
 const getCoverage = async (req, res, next) => {
   try {
@@ -69,9 +69,19 @@ const getReviews = async (req, res, next) => {
   }
 };
 
+const getAllWarehouses = async (req, res, next) => {
+  try {
+    const warehouses = await Warehouse.find().sort({ name: 1 });
+    res.status(200).json({ success: true, data: warehouses });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCoverage,
   calculateEstimate,
   createReview,
   getReviews,
+  getAllWarehouses,
 };

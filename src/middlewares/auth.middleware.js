@@ -1,4 +1,4 @@
-const { clerkClient } = require("@clerk/clerk-sdk-node");
+const jwt = require("jsonwebtoken");
 const User = require("../modules/users/user.model");
 
 const protect = async (req, res, next) => {
@@ -12,9 +12,10 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: "Not authorized, no token provided" });
     }
 
-    const verifiedToken = await clerkClient.verifyToken(token);
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findOne({ clerkId: verifiedToken.sub });
+    const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found in database" });

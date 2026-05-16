@@ -3,22 +3,48 @@ const TrackingEvent = require("./tracking.model");
 const User = require("../users/user.model");
 const createParcel = async (req, res, next) => {
   try {
-    const { senderId, receiver, type, weight, deliveryCharge, codAmount } = req.body;
+    const senderId = req.user._id; // injected by protect middleware — never trust client
 
-    if (!senderId || !receiver || !weight || !deliveryCharge) {
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+    const {
+      receiverName, receiverPhone, deliveryAddress, district,
+      parcelType, weight, instructions,
+      // destination is used for cost calc
+      destination,
+    } = req.body;
+
+    if (!receiverName || !receiverPhone || !deliveryAddress || !parcelType || !weight || !destination) {
+      return res.status(400).json({ success: false, message: "Missing required booking fields." });
     }
+
+    const kg = parseFloat(weight);
+    if (isNaN(kg) || kg <= 0) {
+      return res.status(400).json({ success: false, message: "Weight must be a positive number." });
+    }
+
+    // ── Server-side cost calculation (mirrors pricing.controller.js) ──
+    const baseFareMap    = { document: 50, 'small-package': 80, 'medium-package': 120, 'large-package': 180, standard: 60, fragile: 100 };
+    const destChargeMap  = { 'inside-city': 0, 'outside-city': 50, suburban: 80 };
+
+    const baseFare       = baseFareMap[parcelType] ?? 60;
+    const destCharge     = destChargeMap[destination] ?? 0;
+    const weightCharge   = Math.ceil(Math.max(0, kg - 1)) * 20;
+    const totalCost      = baseFare + destCharge + weightCharge;
 
     const trackingId = `ZS-${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`;
 
     const parcel = await Parcel.create({
       trackingId,
       sender: senderId,
-      receiver,
-      type,
-      weight,
-      deliveryCharge,
-      codAmount,
+      receiver: {
+        name: receiverName,
+        phone: receiverPhone,
+        address: deliveryAddress,
+        district: district || "N/A",
+      },
+      type: parcelType.charAt(0).toUpperCase() + parcelType.slice(1).replace(/-/g, ' '),
+      weight: kg,
+      deliveryCharge: totalCost,
+      instructions: instructions || "",
     });
 
     await TrackingEvent.create({
@@ -31,8 +57,7 @@ const createParcel = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "Parcel booked successfully!",
-      trackingId,
-      parcel,
+      data: { parcel, trackingId, totalCost },
     });
   } catch (error) {
     next(error);
